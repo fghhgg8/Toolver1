@@ -11,7 +11,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix=".", intents=intents)
 
-ADMIN_IDS = [1115314183731421274]
+ADMIN_IDS = [1115314183731421274]  # Thay bằng ID của bạn
 
 KEYS_FILE = "keys.json"
 VERIFIED_USERS_FILE = "verified_users.json"
@@ -66,6 +66,22 @@ async def addkey(ctx, key: str = None):
 
     expiry = add_key(key)
     await ctx.send(f"✅ Key `{key}` có hiệu lực đến `{expiry.date()}` (UTC)")
+
+@bot.command()
+async def delkey(ctx, key: str = None):
+    if ctx.author.id not in ADMIN_IDS:
+        return await ctx.send("❌ Bạn không có quyền xóa key.")
+    
+    if not key:
+        return await ctx.send("⚠️ Dùng đúng cú pháp: `.delkey <key>`")
+
+    keys = load_json(KEYS_FILE)
+    if key in keys:
+        del keys[key]
+        save_json(KEYS_FILE, keys)
+        await ctx.send(f"🗑️ Đã xóa key `{key}`.")
+    else:
+        await ctx.send("❌ Key không tồn tại.")
 
 @bot.command()
 async def key(ctx, key: str = None):
