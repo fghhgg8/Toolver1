@@ -4,12 +4,13 @@ from datetime import datetime, timedelta
 import json
 import os
 
-# Khởi tạo bot
+# ✅ Bật intents
 intents = discord.Intents.default()
+intents.message_content = True  # ✅ Bắt buộc phải bật
 bot = commands.Bot(command_prefix=".", intents=intents)
 
-# Danh sách ID admin (bạn)
-ADMIN_IDS = [1115314183731421274]  # ✅ Bạn là admin
+# ✅ ID Discord của bạn
+ADMIN_IDS = [1115314183731421274]
 
 # Danh sách người dùng đã xác thực key
 verified_users = {}
@@ -21,17 +22,21 @@ KEYS_FILE = "keys.json"
 def add_key_with_1_month_expiry(new_key):
     expiry = datetime.utcnow() + timedelta(days=30)
     expiry_str = expiry.isoformat()
+
     if os.path.exists(KEYS_FILE):
         with open(KEYS_FILE, "r") as f:
             keys = json.load(f)
     else:
         keys = {}
+
     keys[new_key] = expiry_str
+
     with open(KEYS_FILE, "w") as f:
         json.dump(keys, f, indent=4)
+
     return expiry_str
 
-# 🔍 Hàm kiểm tra key còn hạn không
+# 🔍 Kiểm tra key còn hạn hay không
 def is_key_valid(key):
     try:
         with open(KEYS_FILE, "r") as f:
@@ -43,52 +48,62 @@ def is_key_valid(key):
     except:
         return False
 
-# ✅ Lệnh admin: thêm key mới
+# ✅ Tạo key (chỉ bạn dùng được)
 @bot.command(name="addkey")
 async def addkey(ctx, key: str = None):
     if ctx.author.id not in ADMIN_IDS:
         await ctx.send("❌ Bạn không có quyền dùng lệnh này.")
         return
+
     if not key:
         await ctx.send("⚠️ Cú pháp đúng: `.addkey <key>`")
         return
+
     expiry = add_key_with_1_month_expiry(key)
     await ctx.send(f"✅ Đã tạo key `{key}` có hiệu lực đến `{expiry[:10]} (UTC)`")
 
-# 🔑 Lệnh người dùng: xác thực key
+# 🔑 Xác thực người dùng bằng key
 @bot.command(name="key")
 async def key(ctx, key_input: str = None):
     if not key_input:
         await ctx.send("⚠️ Dùng đúng cú pháp: `.key <key>`")
         return
+
     try:
         with open(KEYS_FILE, "r") as f:
             keys = json.load(f)
+
         if key_input not in keys:
             await ctx.send("🔒 Key không hợp lệ.")
             return
+
         expiry = datetime.fromisoformat(keys[key_input])
         if datetime.utcnow() > expiry:
             await ctx.send("❌ Key đã hết hạn.")
             return
+
         verified_users[ctx.author.id] = expiry
         await ctx.send("✅ Key hợp lệ! Giờ bạn có thể dùng lệnh `.toolvip <md5>`")
+
     except Exception as e:
         await ctx.send(f"❌ Lỗi xác thực key: {e}")
 
-# 🎯 Lệnh chính: phân tích MD5 nếu đã xác thực
+# 🎯 Phân tích MD5 nếu đã xác thực
 @bot.command(name="toolvip")
 async def toolvip(ctx, md5_input: str = None):
     if ctx.author.id not in verified_users:
         await ctx.send("🚫 Bạn chưa xác thực key. Dùng lệnh `.key <key>` trước.")
         return
+
     if datetime.utcnow() > verified_users[ctx.author.id]:
         del verified_users[ctx.author.id]
         await ctx.send("🔒 Key đã hết hạn. Dùng lại `.key <key>`.")
         return
+
     if not md5_input:
         await ctx.send("⚠️ Dùng đúng cú pháp: `.toolvip <md5>`")
         return
+
     try:
         def analyze_md5(md5):
             total = sum(int(c, 16) for c in md5[:6]) % 18 + 3
@@ -104,6 +119,7 @@ async def toolvip(ctx, md5_input: str = None):
                 "Khả năng nghiêng": bias,
                 "Xác suất đúng (ước lượng)": "≈ 80%"
             }
+
         result = analyze_md5(md5_input)
         msg = (
             f"🎯 **Phân tích MD5:** `{md5_input}`\n"
