@@ -3,22 +3,23 @@ from discord.ext import commands
 from datetime import datetime, timedelta
 import json
 import os
+import random
 
-# ✅ Bật intents
+# ✅ Bật intents để bot đọc nội dung tin nhắn
 intents = discord.Intents.default()
-intents.message_content = True  # ✅ Bắt buộc phải bật
+intents.message_content = True
 bot = commands.Bot(command_prefix=".", intents=intents)
 
-# ✅ ID Discord của bạn
+# ✅ ID Discord của bạn (admin)
 ADMIN_IDS = [1115314183731421274]
 
 # Danh sách người dùng đã xác thực key
 verified_users = {}
 
-# 📁 Đường dẫn file keys.json
+# 📁 File lưu key
 KEYS_FILE = "keys.json"
 
-# 📦 Hàm lưu key với thời hạn 1 tháng
+# ✅ Hàm tạo key có thời hạn 1 tháng
 def add_key_with_1_month_expiry(new_key):
     expiry = datetime.utcnow() + timedelta(days=30)
     expiry_str = expiry.isoformat()
@@ -36,7 +37,7 @@ def add_key_with_1_month_expiry(new_key):
 
     return expiry_str
 
-# 🔍 Kiểm tra key còn hạn hay không
+# 🔐 Kiểm tra key còn hạn hay không
 def is_key_valid(key):
     try:
         with open(KEYS_FILE, "r") as f:
@@ -48,7 +49,7 @@ def is_key_valid(key):
     except:
         return False
 
-# ✅ Tạo key (chỉ bạn dùng được)
+# ✅ Admin tạo key
 @bot.command(name="addkey")
 async def addkey(ctx, key: str = None):
     if ctx.author.id not in ADMIN_IDS:
@@ -56,13 +57,13 @@ async def addkey(ctx, key: str = None):
         return
 
     if not key:
-        await ctx.send("⚠️ Cú pháp đúng: `.addkey <key>`")
+        await ctx.send("⚠️ Dùng đúng cú pháp: `.addkey <key>`")
         return
 
     expiry = add_key_with_1_month_expiry(key)
     await ctx.send(f"✅ Đã tạo key `{key}` có hiệu lực đến `{expiry[:10]} (UTC)`")
 
-# 🔑 Xác thực người dùng bằng key
+# ✅ Người dùng nhập key để xác thực
 @bot.command(name="key")
 async def key(ctx, key_input: str = None):
     if not key_input:
@@ -88,11 +89,46 @@ async def key(ctx, key_input: str = None):
     except Exception as e:
         await ctx.send(f"❌ Lỗi xác thực key: {e}")
 
-# 🎯 Phân tích MD5 nếu đã xác thực
+# ✅ Hàm phân tích MD5
+def analyze_md5(md5):
+    # Lấy 6 ký tự rải rác để tính điểm
+    indices = [2, 5, 10, 15, 20, 25]
+    selected = [md5[i] for i in indices if i < len(md5)]
+    
+    total = sum(int(c, 16) for c in selected) % 18 + 3
+
+    # Phân phối xúc xắc
+    a = total // 3
+    b = (total - a) // 2
+    c = total - a - b
+    dice = sorted([a, b, c])
+
+    prediction = "Tài" if total >= 11 else "Xỉu"
+    confidence = "Cao" if 10 <= total <= 11 else "Trung bình"
+    bias = "⚖️ Nghiêng về Tài" if total > 10 else "⚖️ Nghiêng về Xỉu"
+
+    # ✅ Tính xác suất từ 50–80%
+    if total <= 6:
+        prob = random.randint(50, 60)
+    elif total <= 10:
+        prob = random.randint(60, 70)
+    else:
+        prob = random.randint(70, 80)
+
+    return {
+        "Xúc xắc": dice,
+        "Tổng điểm": total,
+        "Dự đoán": prediction,
+        "Độ tin cậy": confidence,
+        "Khả năng nghiêng": bias,
+        "Xác suất đúng (ước lượng)": f"≈ {prob}%"
+    }
+
+# ✅ Lệnh chính: toolvip
 @bot.command(name="toolvip")
 async def toolvip(ctx, md5_input: str = None):
     if ctx.author.id not in verified_users:
-        await ctx.send("🚫 Bạn chưa xác thực key. Dùng lệnh `.key <key>` trước.")
+        await ctx.send("🚫 Bạn chưa xác thực key. Dùng `.key <key>` trước.")
         return
 
     if datetime.utcnow() > verified_users[ctx.author.id]:
@@ -105,21 +141,6 @@ async def toolvip(ctx, md5_input: str = None):
         return
 
     try:
-        def analyze_md5(md5):
-            total = sum(int(c, 16) for c in md5[:6]) % 18 + 3
-            dice = [total // 3] * 3
-            prediction = "Tài" if total >= 11 else "Xỉu"
-            confidence = "Cao" if total in [10, 11] else "Trung bình"
-            bias = "⚖️ Nghiêng về Tài" if total > 10 else "⚖️ Nghiêng về Xỉu"
-            return {
-                "Xúc xắc": dice,
-                "Tổng điểm": total,
-                "Dự đoán": prediction,
-                "Độ tin cậy": confidence,
-                "Khả năng nghiêng": bias,
-                "Xác suất đúng (ước lượng)": "≈ 80%"
-            }
-
         result = analyze_md5(md5_input)
         msg = (
             f"🎯 **Phân tích MD5:** `{md5_input}`\n"
@@ -131,8 +152,9 @@ async def toolvip(ctx, md5_input: str = None):
             f"🎯 Xác suất đúng (ước lượng): {result['Xác suất đúng (ước lượng)']}"
         )
         await ctx.send(msg)
+
     except Exception as e:
         await ctx.send(f"❌ Lỗi khi phân tích MD5: {e}")
 
-# 🚀 Khởi động bot
+# ✅ Khởi chạy bot
 bot.run(os.getenv("DISCORD_TOKEN"))
