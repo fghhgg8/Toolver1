@@ -11,7 +11,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix=".", intents=intents)
 
-ADMIN_IDS = [1115314183731421274]  # Thay bằng ID của bạn
+ADMIN_IDS = [1115314183731421274]  # Thay ID của bạn ở đây
 
 KEYS_FILE = "keys.json"
 VERIFIED_USERS_FILE = "verified_users.json"
@@ -98,26 +98,22 @@ async def key(ctx, key: str = None):
 @bot.command()
 async def toolvip(ctx, md5: str = None):
     if not is_user_verified(ctx.author.id):
-        return await ctx.send("🚫 Bạn chưa xác thực key. Dùng `.key <key>` trước.")
+        return await ctx.send("🔐 Bạn chưa xác thực key. Dùng `.key <key>` trước.")
 
-    if not md5 or len(md5) < 12:
-        return await ctx.send("⚠️ Dùng đúng cú pháp: `.toolvip <md5>`")
+    if not md5 or len(md5) != 32:
+        return await ctx.send("⚠️ Dùng đúng cú pháp: `.toolvip <md5>` (32 ký tự)")
 
     try:
-        a = int(md5[0:4], 16) % 6 + 1
-        b = int(md5[4:8], 16) % 6 + 1
-        c = int(md5[8:12], 16) % 6 + 1
-        dice = [a, b, c]
+        # Phân tích 3 byte đầu của MD5
+        bytes_data = bytes.fromhex(md5.strip().lower())
+        b1, b2, b3 = bytes_data[0], bytes_data[1], bytes_data[2]
+        dice = [(b % 6) + 1 for b in (b1, b2, b3)]
         total = sum(dice)
+
         prediction = "Tài" if total >= 11 else "Xỉu"
-        confidence = "Cao" if 10 <= total <= 11 else "Trung bình"
-        bias = "⚖️ Nghiêng về Tài" if total > 10 else "⚖️ Nghiêng về Xỉu"
-        if total <= 6:
-            prob = random.randint(50, 60)
-        elif total <= 10:
-            prob = random.randint(60, 70)
-        else:
-            prob = random.randint(70, 80)
+        confidence = "Cao" if total in [10, 11, 12] else "Trung bình"
+        bias = "⚖️ Nghiêng về Tài" if total >= 11 else "⚖️ Nghiêng về Xỉu"
+        prob = random.randint(65, 80) if total >= 10 else random.randint(55, 70)
 
         msg = (
             f"🎯 **Phân tích MD5:** `{md5}`\n"
@@ -128,15 +124,16 @@ async def toolvip(ctx, md5: str = None):
             f"{bias}\n"
             f"🎯 Xác suất đúng (ước lượng): ≈ {prob}%"
         )
+
         await ctx.send(msg)
     except Exception as e:
-        await ctx.send(f"❌ Lỗi: {e}")
+        await ctx.send(f"❌ Lỗi xử lý MD5: {str(e)}")
 
 @bot.command()
 async def ping(ctx):
     await ctx.send("🏓 Bot đang hoạt động!")
 
-# ------------------ KEEP ALIVE -----------------------
+# ------------------ KEEP ALIVE (UptimeRobot) -----------------------
 app = Flask('')
 @app.route('/')
 def home():
