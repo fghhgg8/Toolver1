@@ -1,8 +1,8 @@
-""import discord from discord.ext import commands, tasks import hashlib import json import os import asyncio from datetime import datetime, timedelta
+import discord from discord.ext import commands, tasks import hashlib import json import os import asyncio from datetime import datetime, timedelta
 
 intents = discord.Intents.default() intents.message_content = True bot = commands.Bot(command_prefix='.', intents=intents)
 
-ADMIN_IDS = [1115314183731421274]  # Thay bằng ID admin thật KEY_FILE = 'key_data.json' user_cooldowns = {}
+ADMIN_IDS = [1115314183731421274]  # ID của bạn đã được thêm KEY_FILE = 'key_data.json' user_cooldowns = {}
 
 === Load key data ===
 
@@ -12,29 +12,50 @@ def load_keys(): try: with open(KEY_FILE, 'r') as f: return json.load(f) except:
 
 def save_keys(keys): with open(KEY_FILE, 'w') as f: json.dump(keys, f, indent=4)
 
-=== Hàm kiểm tra key ===
-
-def is_key_valid(key_data, user_id): if key_data.get("user_id") not in ["", user_id]: return False, "🔒 Key này đã được sử dụng bởi người dùng khác." if datetime.strptime(key_data["expire"], "%Y-%m-%d") < datetime.now(): return False, "🔒 Key đã hết hạn." return True, ""
-
-=== Phân tích MD5 (thuật toán mới) ===
+=== Phân tích MD5 ===
 
 def analyze_md5(md5): try: values = [int(md5[i], 16) for i in [-1, -2, -3]] dices = [v % 6 + 1 for v in values] total = sum(dices) result = "Tài" if total >= 11 else "Xỉu" return dices, total, result except: return [], 0, "Lỗi"
 
 === Lệnh nhập key ===
 
-@bot.command() async def key(ctx, key): keys = load_keys() user_id = str(ctx.author.id) # Kiểm tra nếu user đã dùng key if any(data.get("user_id") == user_id for data in keys.values()): await ctx.send("🔐 Bạn đã nhập key trước đó và không thể đổi key mới.") return if key not in keys: await ctx.send(f"🔒 Key không hợp lệ hoặc đã hết hạn.\n📩 Vui lòng liên hệ <@{ADMIN_IDS[0]}> để được hỗ trợ.") return valid, msg = is_key_valid(keys[key], user_id) if not valid: await ctx.send(f"{msg}\n📩 Vui lòng liên hệ <@{ADMIN_IDS[0]}> để được hỗ trợ.") return keys[key]["user_id"] = user_id save_keys(keys) await ctx.send("✅ Key hợp lệ. Bạn có thể sử dụng lệnh .toolvip")
+@bot.command() async def key(ctx, key): keys = load_keys() user_id = str(ctx.author.id)
+
+if any(data.get("user_id") == user_id for data in keys.values()):
+    await ctx.send("🔐 Key đã được sử dụng. Nếu bạn chia sẻ key sẽ bị **BAN** và **không hoàn phí** 😡🤬")
+    return
+
+if key not in keys:
+    await ctx.send(f"❌ Key không hợp lệ.\n📩 Vui lòng liên hệ <@{ADMIN_IDS[0]}> để được hỗ trợ.")
+    return
+
+key_info = keys[key]
+
+if key_info.get("user_id") not in ["", user_id]:
+    await ctx.send(f"🔒 Key này đã được sử dụng bởi người khác.\n📩 Vui lòng liên hệ <@{ADMIN_IDS[0]}> để được hỗ trợ.")
+    return
+
+if datetime.strptime(key_info["expire"], "%Y-%m-%d") < datetime.now():
+    await ctx.send(f"⏳ Key này đã hết hạn.\n📩 Vui lòng liên hệ <@{ADMIN_IDS[0]}> để được hỗ trợ.")
+    return
+
+keys[key]["user_id"] = user_id
+save_keys(keys)
+await ctx.send("✅ Key hợp lệ. Bạn có thể sử dụng lệnh .toolvip")
 
 === Lệnh dùng toolvip ===
 
-@bot.command() async def toolvip(ctx, md5): user_id = str(ctx.author.id) keys = load_keys() if not any(data.get("user_id") == user_id for data in keys.values()): await ctx.send("🔑 Bạn chưa nhập key hợp lệ. Dùng .key <key> trước.") return
+@bot.command() async def toolvip(ctx, md5): user_id = str(ctx.author.id) keys = load_keys()
 
-# Giới hạn 10s mỗi lần dùng
+if not any(data.get("user_id") == user_id for data in keys.values()):
+    await ctx.send(f"🔑 Bạn chưa nhập key hợp lệ. Dùng `.key <key>` trước.\n📩 Cần trợ giúp? Liên hệ <@{ADMIN_IDS[0]}>")
+    return
+
 now = datetime.now()
 if user_id in user_cooldowns and (now - user_cooldowns[user_id]).total_seconds() < 10:
     await ctx.send("⏳ Bạn chỉ được dùng lệnh này mỗi 10 giây.")
     return
-user_cooldowns[user_id] = now
 
+user_cooldowns[user_id] = now
 dices, total, result = analyze_md5(md5)
 await ctx.send(
     f"🎯 Phân tích MD5: `{md5}`\n🎲 Xúc xắc: {dices}\n🔢 Tổng điểm: {total}\n💡 Dự đoán: {result}"
@@ -62,5 +83,5 @@ await ctx.send(
 
 import threading from keep_alive import keep_alive
 
-keep_alive()  # Giữ bot sống bot.run(os.getenv("DISCORD_TOKEN"))
+keep_alive() bot.run(os.getenv("DISCORD_TOKEN"))
 
