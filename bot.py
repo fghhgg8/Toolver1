@@ -1,66 +1,94 @@
-import discord from discord.ext import commands import hashlib import json import os import time from datetime import datetime, timedelta from flask import Flask from threading import Thread
+import discord from discord.ext import commands, tasks import hashlib import json import os import asyncio from datetime import datetime, timedelta from flask import Flask from threading import Thread
 
-intents = discord.Intents.default() intents.message_content = True bot = commands.Bot(command_prefix=".", intents=intents)
+intents = discord.Intents.default() intents.message_content = True bot = commands.Bot(command_prefix='.', intents=intents)
 
-TOKEN = os.getenv("DISCORD_TOKEN") ADMIN_ID = 1115314183731421274  # Thay bằng ID admin thật của bạn KEY_FILE = "keys.json" LOG_FILE = "log.txt" COOLDOWN_SECONDS = 10 user_cooldowns = {}
-
-Tạo web server đơn giản để uptime bot
+KEY_FILE = 'keys.json' USED_KEYS_FILE = 'used_keys.json' ADMIN_ID = 1115314183731421274  # Thay bằng ID admin thật của bạn COOLDOWN_SECONDS = 10 user_cooldowns = {}
 
 app = Flask('')
 
-@app.route('/') def home(): return "Bot is alive!"
+@app.route('/') def home(): return "Bot is running!"
 
 def run(): app.run(host='0.0.0.0', port=8080)
 
 def keep_alive(): t = Thread(target=run) t.start()
 
+def load_keys(): if not os.path.exists(KEY_FILE): return {} with open(KEY_FILE, 'r') as f: return json.load(f)
+
+def save_keys(data): with open(KEY_FILE, 'w') as f: json.dump(data, f, indent=2)
+
+def load_used_keys(): if not os.path.exists(USED_KEYS_FILE): return {} with open(USED_KEYS_FILE, 'r') as f: return json.load(f)
+
+def save_used_keys(data): with open(USED_KEYS_FILE, 'w') as f: json.dump(data, f, indent=2)
+
+def get_dice_result(md5): digits = [int(c, 16) for c in md5 if c.isdigit() or c in "abcdef"] a = (digits[0] + digits[5] + digits[10]) % 6 + 1 b = (digits[3] + digits[7] + digits[15]) % 6 + 1 c = (digits[1] + digits[8] + digits[20]) % 6 + 1 return [a, b, c]
+
+@bot.event async def on_ready(): print(f'Logged in as {bot.user}')
+
+@bot.command() async def key(ctx, *, user_key): keys = load_keys() used_keys = load_used_keys() user_id = str(ctx.author.id)
+
+if user_id in used_keys:
+    await ctx.send("\U0001f512 Bạn đã nhập key trước đó và không thể đổi key mới.")
+    return
+
+if user_key in keys:
+    expiry = datetime.strptime(keys[user_key], '%Y-%m-%d')
+    if expiry > datetime.now():
+        used_keys[user_id] = user_key
+        save_used_keys(used_keys)
+        await ctx.send("\U0001f513 Key đã được kích hoạt thành công.")
+    else:
+        await ctx.send(f"\U0001f512 Key không hợp lệ hoặc đã hết hạn. Vui lòng liên hệ <@{ADMIN_ID}> để được hỗ trợ.")
+else:
+    await ctx.send(f"\U0001f512 Key không hợp lệ hoặc đã hết hạn. Vui lòng liên hệ <@{ADMIN_ID}> để được hỗ trợ.")
+
+@bot.command() async def delkey(ctx, member: discord.Member): if ctx.author.id != ADMIN_ID: await ctx.send("⛔ Bạn không có quyền sử dụng lệnh này.") return
+
+user_id = str(member.id)
+used_keys = load_used_keys()
+keys = load_keys()
+
+if user_id in used_keys:
+    key_to_remove = used_keys[user_id]
+    if key_to_remove in keys:
+        del keys[key_to_remove]
+    del used_keys[user_id]
+    save_used_keys(used_keys)
+    save_keys(keys)
+    await ctx.send(f"✅ Đã xoá key của người dùng <@{user_id}>.")
+else:
+    await ctx.send(f"⚠️ Người dùng <@{user_id}> chưa đăng ký key hoặc đã bị xoá từ trước.")
+
+@bot.command() async def toolvip(ctx, md5: str): user_id = str(ctx.author.id) used_keys = load_used_keys()
+
+if user_id not in used_keys:
+    await ctx.send(f"\U0001f512 Bạn chưa nhập key. Dùng lệnh `.key <key>` để kích hoạt. Nếu chưa có key, liên hệ <@{ADMIN_ID}> để mua key.")
+    return
+
+now = datetime.now()
+if user_id in user_cooldowns and (now - user_cooldowns[user_id]).total_seconds() < COOLDOWN_SECONDS:
+    await ctx.send(f"\u23F1 Vui lòng chờ {COOLDOWN_SECONDS} giây giữa mỗi lần sử dụng.")
+    return
+user_cooldowns[user_id] = now
+
+dice = get_dice_result(md5)
+total = sum(dice)
+result = 'Tài' if total >= 11 else 'Xỉu'
+confidence = 'Cao'
+lean = 'Nghiêng về ' + result
+percentage = '≈ 70%'
+
+message = (
+    f"\U0001F3AF Phân tích MD5: `{md5}`\n"
+    f"\u2680 Xúc xắc: {dice}\n"
+    f"\U0001F522 Tổng điểm: {total}\n"
+    f"\U0001F4A1 Dự đoán: {result}\n"
+    f"\U0001F4CA Độ tin cậy: {confidence}\n"
+    f"⚖️ {lean}\n"
+    f"\U0001F3AF Xác suất đúng (ước lượng): {percentage}"
+)
+await ctx.send(message)
+
 keep_alive()
 
-def load_keys(): try: with open(KEY_FILE, 'r') as f: return json.load(f) except FileNotFoundError: return {}
-
-def save_keys(keys): with open(KEY_FILE, 'w') as f: json.dump(keys, f, indent=4)
-
-def is_key_valid(user_id, key): keys = load_keys() if key not in keys: return False, "Bạn đã nhập sai key. Vui lòng liên hệ admin để được hỗ trợ." if keys[key]["user"] != 0 and keys[key]["user"] != user_id: return False, "Key này đã được sử dụng bởi người khác." expiry = datetime.strptime(keys[key]["expiry"], "%Y-%m-%d") if expiry < datetime.now(): return False, "Key đã hết hạn." return True, ""
-
-def use_key(user_id, key): keys = load_keys() keys[key]["user"] = user_id save_keys(keys)
-
-def renew_key(key): keys = load_keys() if key in keys: new_expiry = datetime.now() + timedelta(days=30) keys[key]["expiry"] = new_expiry.strftime("%Y-%m-%d") save_keys(keys) return True return False
-
-def get_key_info(user_id): keys = load_keys() for k, v in keys.items(): if v["user"] == user_id: expiry = datetime.strptime(v["expiry"], "%Y-%m-%d") days_left = (expiry - datetime.now()).days return k, days_left return None, None
-
-def md5_predict(md5_hash): nums = [int(md5_hash[i], 16) for i in [0, 2, 4]] dice = [n % 6 + 1 for n in nums] total = sum(dice) result = "Tài" if total >= 11 else "Xỉu" confidence = "Cao" if total in range(10, 13) else "Trung bình" percent = {"Cao": "≈ 75%", "Trung bình": "≈ 65%"}[confidence] return dice, total, result, confidence, percent
-
-@bot.command() async def toolvip(ctx, md5: str): user_id = str(ctx.author.id) now = time.time() if user_id in user_cooldowns and now - user_cooldowns[user_id] < COOLDOWN_SECONDS: await ctx.send("⏳ Bạn cần chờ trước khi dùng lại lệnh này.") return user_cooldowns[user_id] = now
-
-keys = load_keys()
-user_has_key = any(v["user"] == int(user_id) for v in keys.values())
-
-if not user_has_key:
-    await ctx.send(f"❌ Bạn đã nhập sai key. Vui lòng liên hệ admin để được hỗ trợ. <@{ADMIN_ID}>")
-    return
-
-dice, total, result, confidence, percent = md5_predict(md5)
-await ctx.send(
-    f"🎯 **Phân tích MD5:** `{md5}`\n🎲 Xúc xắc: {dice}\n🔢 Tổng điểm: {total}\n💡 Dự đoán: **{result}**\n📊 Độ tin cậy: **{confidence}**\n📌 Xác suất đúng (ước lượng): {percent}"
-)
-
-with open(LOG_FILE, 'a') as f:
-    f.write(f"{ctx.author} | {md5} | {result}\n")
-
-@bot.command() async def key(ctx, key: str): user_id = str(ctx.author.id) valid, message = is_key_valid(int(user_id), key) if not valid: await ctx.send(f"❌ {message} <@{ADMIN_ID}>") return
-
-# Check nếu user đã dùng key khác
-current_key, _ = get_key_info(int(user_id))
-if current_key:
-    await ctx.send("⚠️ Mỗi người chỉ được dùng 1 key duy nhất.")
-    return
-
-use_key(int(user_id), key)
-await ctx.send("✅ Key đã được kích hoạt thành công!")
-
-@bot.command() async def checkkey(ctx): user_id = str(ctx.author.id) key, days = get_key_info(int(user_id)) if key: await ctx.send(f"🔑 Key của bạn: {key}\n⏳ Còn hạn: {days} ngày") else: await ctx.send("❌ Bạn chưa dùng key nào hoặc key không hợp lệ.")
-
-@bot.command() async def renewkey(ctx, key: str): if ctx.author.id != ADMIN_ID: await ctx.send("❌ Bạn không có quyền sử dụng lệnh này.") return if renew_key(key): await ctx.send("🔁 Đã gia hạn key thêm 30 ngày.") else: await ctx.send("❌ Key không tồn tại.")
-
-bot.run(TOKEN)
+TOKEN = os.getenv("DISCORD_TOKEN") bot.run(TOKEN)
 
