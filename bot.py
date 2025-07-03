@@ -2,7 +2,7 @@ import discord from discord.ext import commands import hashlib import json impor
 
 intents = discord.Intents.default() intents.message_content = True bot = commands.Bot(command_prefix=".", intents=intents)
 
-TOKEN = os.getenv("DISCORD_TOKEN") ADMIN_ID = 123456789012345678  # Thay bằng ID admin thật của bạn KEY_FILE = "keys.json" LOG_FILE = "log.txt" COOLDOWN_SECONDS = 10 user_cooldowns = {}
+TOKEN = os.getenv("DISCORD_TOKEN") ADMIN_ID = 1115314183731421274  # Thay bằng ID admin thật của bạn KEY_FILE = "keys.json" LOG_FILE = "log.txt" COOLDOWN_SECONDS = 10 user_cooldowns = {}
 
 Tạo web server đơn giản để uptime bot
 
@@ -20,7 +20,7 @@ def load_keys(): try: with open(KEY_FILE, 'r') as f: return json.load(f) except 
 
 def save_keys(keys): with open(KEY_FILE, 'w') as f: json.dump(keys, f, indent=4)
 
-def is_key_valid(user_id, key): keys = load_keys() if key not in keys: return False, "Bạn đã nhập sai key, vui lòng liên hệ admin để được hỗ trợ." if keys[key]["user"] != 0 and keys[key]["user"] != user_id: return False, "Key này đã được sử dụng bởi người khác." expiry = datetime.strptime(keys[key]["expiry"], "%Y-%m-%d") if expiry < datetime.now(): return False, "Key đã hết hạn." return True, ""
+def is_key_valid(user_id, key): keys = load_keys() if key not in keys: return False, "Bạn đã nhập sai key. Vui lòng liên hệ admin để được hỗ trợ." if keys[key]["user"] != 0 and keys[key]["user"] != user_id: return False, "Key này đã được sử dụng bởi người khác." expiry = datetime.strptime(keys[key]["expiry"], "%Y-%m-%d") if expiry < datetime.now(): return False, "Key đã hết hạn." return True, ""
 
 def use_key(user_id, key): keys = load_keys() keys[key]["user"] = user_id save_keys(keys)
 
@@ -36,16 +36,18 @@ keys = load_keys()
 user_has_key = any(v["user"] == int(user_id) for v in keys.values())
 
 if not user_has_key:
-    await ctx.send("❌ Bạn chưa kích hoạt key hoặc key không hợp lệ. Dùng `.key yourkey` để kích hoạt.")
+    await ctx.send(f"❌ Bạn đã nhập sai key. Vui lòng liên hệ admin để được hỗ trợ. <@{ADMIN_ID}>")
     return
 
 dice, total, result, confidence, percent = md5_predict(md5)
-await ctx.send(f"🎯 **Phân tích MD5:** `{md5}`\n🎲 Xúc xắc: {dice}\n🔢 Tổng điểm: {total}\n💡 Dự đoán: **{result}**\n📊 Độ tin cậy: **{confidence}**\n📌 Xác suất đúng (ước lượng): {percent}")
+await ctx.send(
+    f"🎯 **Phân tích MD5:** `{md5}`\n🎲 Xúc xắc: {dice}\n🔢 Tổng điểm: {total}\n💡 Dự đoán: **{result}**\n📊 Độ tin cậy: **{confidence}**\n📌 Xác suất đúng (ước lượng): {percent}"
+)
 
 with open(LOG_FILE, 'a') as f:
     f.write(f"{ctx.author} | {md5} | {result}\n")
 
-@bot.command() async def key(ctx, key: str): user_id = str(ctx.author.id) valid, message = is_key_valid(int(user_id), key) if not valid: await ctx.send(f"❌ {message}") return
+@bot.command() async def key(ctx, key: str): user_id = str(ctx.author.id) valid, message = is_key_valid(int(user_id), key) if not valid: await ctx.send(f"❌ {message} <@{ADMIN_ID}>") return
 
 # Check nếu user đã dùng key khác
 current_key, _ = get_key_info(int(user_id))
