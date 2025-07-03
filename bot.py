@@ -71,7 +71,7 @@ await ctx.send(
 
 === Admin: xóa toàn bộ liên kết key ===
 
-@bot.command() async def delkey(ctx): if ctx.author.id not in ADMIN_IDS: return keys = load_keys() for key in keys: keys[key]["user_id"] = "" save_keys(keys) await ctx.send("🧹 Đã xóa toàn bộ liên kết user-key.")
+@bot.command() async def delkey(ctx): if ctx.author.id not in ADMIN_IDS: return keys = load_keys() for key in keys: keys[key]["user_id"] = "" save_keys(keys) await ctx.send("🧹 Đã xóa toàn bộ liên kết user-key. Người dùng sẽ không thể sử dụng .toolvip cho đến khi nhập lại key mới.")
 
 === Ping UptimeRobot ===
 
