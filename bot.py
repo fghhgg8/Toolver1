@@ -1,4 +1,3 @@
-
 import discord
 from discord.ext import commands
 from datetime import datetime, timedelta
@@ -19,10 +18,10 @@ bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 USER_KEYS_FILE = 'user_keys.json'
 KEYS_DB_FILE = 'keys_db.json'
 
-USER_KEYS = {}  # user_id: key
+USER_KEYS = {}  # user_id: key hoặc list
 KEYS_DB = {}    # key: {expire: yyyy-mm-dd}
 
-# Load data
+# Load dữ liệu từ file
 if os.path.exists(USER_KEYS_FILE):
     with open(USER_KEYS_FILE, 'r') as f:
         USER_KEYS = json.load(f)
@@ -31,14 +30,14 @@ if os.path.exists(KEYS_DB_FILE):
     with open(KEYS_DB_FILE, 'r') as f:
         KEYS_DB = json.load(f)
 
-# Save data
+# Lưu dữ liệu
 def save_all():
     with open(USER_KEYS_FILE, 'w') as f:
         json.dump(USER_KEYS, f, indent=4)
     with open(KEYS_DB_FILE, 'w') as f:
         json.dump(KEYS_DB, f, indent=4)
 
-# Thuật toán dự đoán MD5
+# Thuật toán dự đoán từ MD5
 def predict_dice_from_md5(md5_hash: str):
     if len(md5_hash) != 32:
         return None
@@ -63,7 +62,7 @@ def predict_dice_from_md5(md5_hash: str):
     except:
         return None
 
-# Nhập key
+# Lệnh nhập key
 @bot.command()
 async def key(ctx, key):
     user_id = str(ctx.author.id)
@@ -99,7 +98,7 @@ async def key(ctx, key):
     save_all()
     await ctx.send("✅ Key xác nhận thành công. Dùng lệnh `.dts <md5>`")
 
-# Dự đoán
+# Lệnh dự đoán
 @bot.command()
 @commands.cooldown(1, 10, commands.BucketType.user)
 async def dts(ctx, md5):
@@ -131,20 +130,15 @@ async def dts(ctx, md5):
         return
 
     msg = (
-        f"🎲 Kết quả dự đoán:
-"
-        f"• Xúc xắc: {result['xúc_xắc']}
-"
-        f"• Tổng: {result['tổng']} ({result['kết_quả']})
-"
-        f"• Độ tin cậy: {result['độ_tin_cậy']}
-
-"
+        f"🎲 Kết quả dự đoán:\n"
+        f"• Xúc xắc: {result['xúc_xắc']}\n"
+        f"• Tổng: {result['tổng']} ({result['kết_quả']})\n"
+        f"• Độ tin cậy: {result['độ_tin_cậy']}\n\n"
         f"✨ DTS TOOL VIP – MUỐN MUA KEY LIÊN HỆ ADMIN <@{ADMIN_ID}>"
     )
     await ctx.send(msg)
 
-# Tạo key
+# Admin tạo key
 @bot.command()
 async def taokey(ctx, ten: str, songay: int):
     if ctx.author.id != ADMIN_ID:
@@ -155,7 +149,7 @@ async def taokey(ctx, ten: str, songay: int):
     save_all()
     await ctx.send(f"✨ Key `{key}` đã tạo, hết hạn ngày {expire_date}")
 
-# Xóa key
+# Xóa key người dùng
 @bot.command()
 async def delkey(ctx):
     user_id = str(ctx.author.id)
@@ -166,7 +160,7 @@ async def delkey(ctx):
     else:
         await ctx.send("⚠️ Bạn chưa nhập key.")
 
-# FastAPI cho uptime robot
+# FastAPI cho UptimeRobot
 app = FastAPI()
 
 @app.get("/")
@@ -178,4 +172,5 @@ def run_web():
 
 threading.Thread(target=run_web).start()
 
+# Khởi động bot
 bot.run(TOKEN)
