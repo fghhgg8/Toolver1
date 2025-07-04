@@ -37,12 +37,17 @@ def save_all():
     with open(KEYS_DB_FILE, 'w') as f:
         json.dump(KEYS_DB, f, indent=4)
 
-# Thuật toán dự đoán từ MD5 (cập nhật mới nhất)
+# Thuật toán dự đoán từ MD5
 def predict_dice_from_md5(md5_hash: str):
     if len(md5_hash) != 32:
         return None
+    if not all(c in '0123456789abcdefABCDEF' for c in md5_hash):
+        return None
     try:
         b = [int(md5_hash[i:i+2], 16) for i in range(0, 32, 2)]
+        if len(b) < 18:
+            return None
+
         dice1 = ((b[1] + b[3] + b[5]) // 3) % 6 + 1
         dice2 = ((b[7] + b[9] + b[11]) // 3) % 6 + 1
         dice3 = ((b[13] + b[15] + b[17]) // 3) % 6 + 1
@@ -62,7 +67,8 @@ def predict_dice_from_md5(md5_hash: str):
             'kết_quả': result,
             'độ_tin_cậy': trust
         }
-    except:
+    except Exception as e:
+        print(f"Lỗi dự đoán MD5: {e}")
         return None
 
 # Lệnh nhập key
@@ -129,7 +135,7 @@ async def dts(ctx, md5):
 
     result = predict_dice_from_md5(md5)
     if not result:
-        await ctx.send("❌ MD5 không hợp lệ.")
+        await ctx.send("❌ MD5 không hợp lệ. Vui lòng nhập đúng mã MD5 32 ký tự hex (0-9a-f).")
         return
 
     msg = (
