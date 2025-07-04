@@ -39,9 +39,11 @@ def save_all():
 
 # Thuật toán dự đoán từ MD5
 def predict_dice_from_md5(md5_hash: str):
+    md5_hash = md5_hash.strip().lower()
+
     if len(md5_hash) != 32:
         return None
-    if not all(c in '0123456789abcdefABCDEF' for c in md5_hash):
+    if not all(c in '0123456789abcdef' for c in md5_hash):
         return None
     try:
         b = [int(md5_hash[i:i+2], 16) for i in range(0, 32, 2)]
@@ -68,7 +70,7 @@ def predict_dice_from_md5(md5_hash: str):
             'độ_tin_cậy': trust
         }
     except Exception as e:
-        print(f"Lỗi dự đoán MD5: {e}")
+        print(f"[Lỗi dự đoán MD5]: {e}")
         return None
 
 # Lệnh nhập key
@@ -114,6 +116,8 @@ async def dts(ctx, md5):
     user_id = str(ctx.author.id)
     now = datetime.utcnow()
 
+    md5 = md5.strip().lower()  # ⚠️ Quan trọng
+
     if user_id not in USER_KEYS:
         await ctx.send(f"❌ Bạn chưa nhập key. Dùng `.key <key>` trước. <@{ADMIN_ID}>")
         return
@@ -135,7 +139,7 @@ async def dts(ctx, md5):
 
     result = predict_dice_from_md5(md5)
     if not result:
-        await ctx.send("❌ MD5 không hợp lệ. Vui lòng nhập đúng mã MD5 32 ký tự hex (0-9a-f).")
+        await ctx.send("❌ MD5 không hợp lệ. Vui lòng nhập đúng chuỗi 32 ký tự hex (0-9a-f).")
         return
 
     msg = (
@@ -147,7 +151,7 @@ async def dts(ctx, md5):
     )
     await ctx.send(msg)
 
-# Admin tạo key
+# Tạo key
 @bot.command()
 async def taokey(ctx, ten: str, songay: int):
     if ctx.author.id != ADMIN_ID:
@@ -158,7 +162,7 @@ async def taokey(ctx, ten: str, songay: int):
     save_all()
     await ctx.send(f"✨ Key `{key}` đã tạo, hết hạn ngày {expire_date}")
 
-# Xóa key người dùng
+# Xoá key người dùng
 @bot.command()
 async def delkey(ctx):
     user_id = str(ctx.author.id)
@@ -169,7 +173,7 @@ async def delkey(ctx):
     else:
         await ctx.send("⚠️ Bạn chưa nhập key.")
 
-# FastAPI cho UptimeRobot
+# FastAPI UptimeRobot
 app = FastAPI()
 
 @app.get("/")
@@ -181,5 +185,5 @@ def run_web():
 
 threading.Thread(target=run_web).start()
 
-# Khởi động bot
+# Run bot
 bot.run(TOKEN)
