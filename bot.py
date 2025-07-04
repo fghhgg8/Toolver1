@@ -6,19 +6,17 @@ intents = discord.Intents.default() intents.message_content = True bot = command
 
 KEY_FILE = 'keys.json' USER_KEYS = {}
 
-Load keys from file
-
 if os.path.exists(KEY_FILE): with open(KEY_FILE, 'r') as f: USER_KEYS = json.load(f)
 
 def save_keys(): with open(KEY_FILE, 'w') as f: json.dump(USER_KEYS, f, indent=4)
 
-Dice prediction algorithm
-
 def predict_dice_from_md5(md5_hash: str): if len(md5_hash) != 32: return None try: bytes_array = [int(md5_hash[i:i+2], 16) for i in range(0, 32, 2)] dice1 = (bytes_array[3] + bytes_array[10]) % 6 + 1 dice2 = (bytes_array[5] + bytes_array[12]) % 6 + 1 dice3 = (bytes_array[7] + bytes_array[14]) % 6 + 1 total = dice1 + dice2 + dice3 result = 'Tài' if total >= 11 else 'Xỉu' trust = 'Thấp' if total in [10, 11]: trust = 'Cao' elif 9 <= total <= 12: trust = 'Trung bình' return { 'xúc_xắc': [dice1, dice2, dice3], 'tổng': total, 'kết_quả': result, 'độ_tin_cậy': trust } except: return None
 
-Command: key input
+@bot.command() async def key(ctx, key): user_id = str(ctx.author.id)
 
-@bot.command() async def key(ctx, key): user_id = str(ctx.author.id) if user_id in USER_KEYS and ctx.author.id != ADMIN_ID: await ctx.send("✅ Bạn đã nhập key và được xác nhận rồi.") return
+if ctx.author.id != ADMIN_ID and user_id in USER_KEYS:
+    await ctx.send("✅ Bạn đã nhập key và được xác nhận rồi.")
+    return
 
 for k, v in USER_KEYS.items():
     if k != user_id and v['key'] == key:
@@ -39,11 +37,9 @@ for k, v in USER_KEYS.items():
 
 await ctx.send(f"❌ Key không tồn tại vui lòng liên hệ admin để được cung cấp <@{ADMIN_ID}>")
 
-Command: delete key (only admin can fully reset)
-
 @bot.command() async def delkey(ctx): user_id = str(ctx.author.id) if user_id in USER_KEYS: del USER_KEYS[user_id] save_keys() await ctx.send("✅ Key của bạn đã được xóa. Bạn cần nhập lại key để sử dụng tiếp.") else: await ctx.send("⚠️ Bạn chưa nhập key nào trước đó.")
 
-Command: predict from MD5
+@bot.command() async def taokey(ctx, makey: str, songay: int): if ctx.author.id != ADMIN_ID: return expire_date = (datetime.utcnow() + timedelta(days=songay)).strftime('%Y-%m-%d') USER_KEYS[makey] = {'key': makey, 'expire': expire_date} save_keys() await ctx.send(f"✨ Key mới: {makey}\nHết hạn: {expire_date}")
 
 @bot.command() @commands.cooldown(1, 10, commands.BucketType.user) async def dts(ctx, md5): user_id = str(ctx.author.id) if user_id not in USER_KEYS and ctx.author.id != ADMIN_ID: await ctx.send(f"❌ Bạn chưa nhập key. Dùng lệnh .key <key> trước. Liên hệ admin <@{ADMIN_ID}>") return
 
@@ -61,27 +57,13 @@ msg = (
 )
 await ctx.send(msg)
 
-Command: admin creates key with .taokey <key> <days>
+Auto xóa key hết hạn mỗi giờ
 
-@bot.command() async def taokey(ctx, key: str, days: int): if ctx.author.id != ADMIN_ID: await ctx.send("❌ Bạn không có quyền sử dụng lệnh này.") return
+@tasks.loop(minutes=60) async def auto_remove_expired_keys(): now = datetime.utcnow() expired_users = [uid for uid, data in USER_KEYS.items() if datetime.strptime(data['expire'], '%Y-%m-%d') < now] for uid in expired_users: del USER_KEYS[uid] if expired_users: save_keys()
 
-for v in USER_KEYS.values():
-    if v['key'] == key:
-        await ctx.send("⚠️ Key này đã tồn tại. Vui lòng chọn key khác.")
-        return
+auto_remove_expired_keys.start()
 
-expire_date = (datetime.utcnow() + timedelta(days=days)).strftime('%Y-%m-%d')
-USER_KEYS[key] = {'key': key, 'expire': expire_date}
-save_keys()
-await ctx.send(f"✅ Đã tạo key `{key}` có hiệu lực đến {expire_date}")
-
-Background: remove expired keys
-
-@tasks.loop(hours=1) async def remove_expired_keys(): now = datetime.utcnow() expired_users = [uid for uid, info in USER_KEYS.items() if datetime.strptime(info['expire'], '%Y-%m-%d') < now] for uid in expired_users: del USER_KEYS[uid] if expired_users: save_keys()
-
-@bot.event async def on_ready(): print(f"Bot đã đăng nhập với tên: {bot.user}") remove_expired_keys.start()
-
-Uptime Robot ping server
+FastAPI server cho UptimeRobot
 
 app = FastAPI()
 
