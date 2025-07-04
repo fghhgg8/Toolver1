@@ -1,3 +1,4 @@
+
 import discord
 from discord.ext import commands
 from datetime import datetime, timedelta
@@ -6,7 +7,7 @@ from fastapi import FastAPI
 import uvicorn
 import threading
 
-# Sử dụng token từ biến môi trường
+# Config
 TOKEN = os.getenv("DISCORD_TOKEN")
 ADMIN_ID = 1115314183731421274
 PREFIX = '.'
@@ -15,18 +16,29 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
-KEY_FILE = 'keys.json'
-USER_KEYS = {}
+USER_KEYS_FILE = 'user_keys.json'
+KEYS_DB_FILE = 'keys_db.json'
 
-if os.path.exists(KEY_FILE):
-    with open(KEY_FILE, 'r') as f:
+USER_KEYS = {}  # user_id: key
+KEYS_DB = {}    # key: {expire: yyyy-mm-dd}
+
+# Load data
+if os.path.exists(USER_KEYS_FILE):
+    with open(USER_KEYS_FILE, 'r') as f:
         USER_KEYS = json.load(f)
 
-def save_keys():
-    with open(KEY_FILE, 'w') as f:
-        json.dump(USER_KEYS, f, indent=4)
+if os.path.exists(KEYS_DB_FILE):
+    with open(KEYS_DB_FILE, 'r') as f:
+        KEYS_DB = json.load(f)
 
-# Thuật toán dự đoán mới
+# Save data
+def save_all():
+    with open(USER_KEYS_FILE, 'w') as f:
+        json.dump(USER_KEYS, f, indent=4)
+    with open(KEYS_DB_FILE, 'w') as f:
+        json.dump(KEYS_DB, f, indent=4)
+
+# Thuật toán dự đoán MD5
 def predict_dice_from_md5(md5_hash: str):
     if len(md5_hash) != 32:
         return None
@@ -51,59 +63,43 @@ def predict_dice_from_md5(md5_hash: str):
     except:
         return None
 
+# Nhập key
 @bot.command()
 async def key(ctx, key):
     user_id = str(ctx.author.id)
     now = datetime.utcnow()
 
-    # Cho admin nhập nhiều key
+    if key not in KEYS_DB:
+        await ctx.send(f"❌ Key không tồn tại. Liên hệ admin <@{ADMIN_ID}>")
+        return
+
+    expire = datetime.strptime(KEYS_DB[key]['expire'], '%Y-%m-%d')
+    if now > expire:
+        await ctx.send(f"❌ Key đã hết hạn. Liên hệ admin <@{ADMIN_ID}>")
+        return
+
     if ctx.author.id == ADMIN_ID:
-        for v in USER_KEYS.values():
-            if v['key'] == key:
-                expire = datetime.strptime(v['expire'], '%Y-%m-%d')
-                if now > expire:
-                    await ctx.send(f"❌ Key không tồn tại vui lòng liên hệ admin để được cung cấp <@{ADMIN_ID}>")
-                    return
-                USER_KEYS[user_id] = {'key': key, 'expire': v['expire']}
-                save_keys()
-                await ctx.send("✅ Key xác nhận thành công. Bạn có thể dùng lệnh .dts <md5>")
-                return
-        await ctx.send(f"❌ Key không tồn tại vui lòng liên hệ admin để được cung cấp <@{ADMIN_ID}>")
+        USER_KEYS[user_id] = USER_KEYS.get(user_id, [])
+        if key not in USER_KEYS[user_id]:
+            USER_KEYS[user_id].append(key)
+            save_all()
+        await ctx.send("✅ Admin nhập key thành công.")
         return
 
-    # Người thường chỉ 1 key
     if user_id in USER_KEYS:
-        await ctx.send("✅ Bạn đã nhập key và được xác nhận rồi.")
+        await ctx.send("✅ Bạn đã nhập key rồi.")
         return
 
-    for k, v in USER_KEYS.items():
-        if k != user_id and v['key'] == key:
-            await ctx.send(f"❌ Key đã được người khác sử dụng. Hãy dùng key khác hoặc liên hệ admin <@{ADMIN_ID}>.")
+    for uid, keys in USER_KEYS.items():
+        if (isinstance(keys, list) and key in keys) or keys == key:
+            await ctx.send(f"❌ Key đã được người khác sử dụng. Liên hệ admin <@{ADMIN_ID}>")
             return
 
-    for v in USER_KEYS.values():
-        if v['key'] == key:
-            expire = datetime.strptime(v['expire'], '%Y-%m-%d')
-            if now > expire:
-                await ctx.send(f"❌ Key không tồn tại vui lòng liên hệ admin để được cung cấp <@{ADMIN_ID}>")
-                return
-            USER_KEYS[user_id] = {'key': key, 'expire': v['expire']}
-            save_keys()
-            await ctx.send("✅ Key xác nhận thành công. Bạn có thể dùng lệnh .dts <md5>")
-            return
+    USER_KEYS[user_id] = key
+    save_all()
+    await ctx.send("✅ Key xác nhận thành công. Dùng lệnh `.dts <md5>`")
 
-    await ctx.send(f"❌ Key không tồn tại vui lòng liên hệ admin để được cung cấp <@{ADMIN_ID}>")
-
-@bot.command()
-async def delkey(ctx):
-    user_id = str(ctx.author.id)
-    if user_id in USER_KEYS:
-        del USER_KEYS[user_id]
-        save_keys()
-        await ctx.send("✅ Key của bạn đã được xóa. Bạn cần nhập lại key để sử dụng tiếp.")
-    else:
-        await ctx.send("⚠️ Bạn chưa nhập key nào trước đó.")
-
+# Dự đoán
 @bot.command()
 @commands.cooldown(1, 10, commands.BucketType.user)
 async def dts(ctx, md5):
@@ -111,42 +107,66 @@ async def dts(ctx, md5):
     now = datetime.utcnow()
 
     if user_id not in USER_KEYS:
-        await ctx.send(f"❌ Bạn chưa nhập key. Dùng lệnh `.key <key>` trước. Liên hệ admin <@{ADMIN_ID}>")
+        await ctx.send(f"❌ Bạn chưa nhập key. Dùng `.key <key>` trước. <@{ADMIN_ID}>")
         return
 
-    expire = datetime.strptime(USER_KEYS[user_id]['expire'], '%Y-%m-%d')
-    if now > expire:
+    keys = USER_KEYS[user_id] if isinstance(USER_KEYS[user_id], list) else [USER_KEYS[user_id]]
+    valid = False
+    for k in keys:
+        if k in KEYS_DB:
+            expire = datetime.strptime(KEYS_DB[k]['expire'], '%Y-%m-%d')
+            if now <= expire:
+                valid = True
+                break
+
+    if not valid:
         del USER_KEYS[user_id]
-        save_keys()
-        await ctx.send(f"❌ Key đã hết hạn. Vui lòng liên hệ admin để được cung cấp key mới <@{ADMIN_ID}>")
+        save_all()
+        await ctx.send(f"❌ Key đã hết hạn. Liên hệ admin <@{ADMIN_ID}>")
         return
 
     result = predict_dice_from_md5(md5)
     if not result:
-        await ctx.send("❌ MD5 không hợp lệ. Vui lòng nhập đúng 32 ký tự hex.")
+        await ctx.send("❌ MD5 không hợp lệ.")
         return
 
     msg = (
-        f"🎲 Kết quả dự đoán từ MD5:\n"
-        f"• Xúc xắc: {result['xúc_xắc']}\n"
-        f"• Tổng: {result['tổng']} ({result['kết_quả']})\n"
-        f"• Độ tin cậy: {result['độ_tin_cậy']}\n\n"
+        f"🎲 Kết quả dự đoán:
+"
+        f"• Xúc xắc: {result['xúc_xắc']}
+"
+        f"• Tổng: {result['tổng']} ({result['kết_quả']})
+"
+        f"• Độ tin cậy: {result['độ_tin_cậy']}
+
+"
         f"✨ DTS TOOL VIP – MUỐN MUA KEY LIÊN HỆ ADMIN <@{ADMIN_ID}>"
     )
     await ctx.send(msg)
 
-# Admin tạo key theo .taokey <tên> <số_ngày>
+# Tạo key
 @bot.command()
 async def taokey(ctx, ten: str, songay: int):
     if ctx.author.id != ADMIN_ID:
         return
     key = ten.lower()
     expire_date = (datetime.utcnow() + timedelta(days=songay)).strftime('%Y-%m-%d')
-    USER_KEYS[key] = {'key': key, 'expire': expire_date}
-    save_keys()
-    await ctx.send(f"✨ Key `{key}` tạo thành công, hết hạn ngày {expire_date}")
+    KEYS_DB[key] = {'key': key, 'expire': expire_date}
+    save_all()
+    await ctx.send(f"✨ Key `{key}` đã tạo, hết hạn ngày {expire_date}")
 
-# UptimeRobot server
+# Xóa key
+@bot.command()
+async def delkey(ctx):
+    user_id = str(ctx.author.id)
+    if user_id in USER_KEYS:
+        del USER_KEYS[user_id]
+        save_all()
+        await ctx.send("✅ Key đã xóa. Nhập key mới.")
+    else:
+        await ctx.send("⚠️ Bạn chưa nhập key.")
+
+# FastAPI cho uptime robot
 app = FastAPI()
 
 @app.get("/")
