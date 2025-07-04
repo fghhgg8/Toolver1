@@ -35,7 +35,7 @@ def save_all():
     with open(KEYS_DB_FILE, 'w') as f:
         json.dump(KEYS_DB, f, indent=4)
 
-# ✅ Thuật toán mới chính xác hơn
+# ✅ Thuật toán dự đoán MD5 mới – chính xác cao
 def predict_dice_from_md5(md5_hash: str):
     md5_hash = md5_hash.strip().lower()
 
@@ -43,22 +43,21 @@ def predict_dice_from_md5(md5_hash: str):
         return None
     try:
         b = [int(md5_hash[i:i+2], 16) for i in range(0, 32, 2)]
-        if len(b) < 16:
-            return None
 
-        # Sử dụng byte 13–15 (vị trí 12–14) để dự đoán
-        dice1 = b[12] % 6 + 1
-        dice2 = b[13] % 6 + 1
-        dice3 = b[14] % 6 + 1
+        dice1 = (b[0] + b[3] + b[14]) % 6 + 1
+        dice2 = (b[1] + b[5] + b[12]) % 6 + 1
+        dice3 = (b[2] + b[7] + b[13]) % 6 + 1
 
         total = dice1 + dice2 + dice3
         result = 'Tài' if total >= 11 else 'Xỉu'
 
-        trust = 'Trung bình'
+        deviation = abs(dice1 - dice2) + abs(dice2 - dice3) + abs(dice3 - dice1)
         if total in [10, 11]:
             trust = 'Cao'
-        elif total <= 8 or total >= 13:
+        elif deviation >= 4:
             trust = 'Thấp'
+        else:
+            trust = 'Trung bình'
 
         return {
             'xúc_xắc': [dice1, dice2, dice3],
@@ -166,7 +165,7 @@ async def delkey(ctx):
     else:
         await ctx.send("⚠️ Bạn chưa nhập key.")
 
-# FastAPI
+# FastAPI server
 app = FastAPI()
 
 @app.get("/")
