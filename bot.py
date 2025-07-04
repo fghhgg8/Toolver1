@@ -37,25 +37,23 @@ def save_all():
     with open(KEYS_DB_FILE, 'w') as f:
         json.dump(KEYS_DB, f, indent=4)
 
-# Thuật toán dự đoán từ MD5 (mới, chính xác hơn)
+# Thuật toán dự đoán từ MD5 (cập nhật mới nhất)
 def predict_dice_from_md5(md5_hash: str):
     if len(md5_hash) != 32:
         return None
     try:
-        bytes_array = [int(md5_hash[i:i+2], 16) for i in range(0, 32, 2)]
-
-        dice1 = ((bytes_array[1] ^ bytes_array[15]) + bytes_array[8]) % 6 + 1
-        dice2 = ((bytes_array[3] + bytes_array[10]) ^ bytes_array[6]) % 6 + 1
-        dice3 = ((bytes_array[0] + bytes_array[5] - bytes_array[14]) % 256) % 6 + 1
+        b = [int(md5_hash[i:i+2], 16) for i in range(0, 32, 2)]
+        dice1 = ((b[1] + b[3] + b[5]) // 3) % 6 + 1
+        dice2 = ((b[7] + b[9] + b[11]) // 3) % 6 + 1
+        dice3 = ((b[13] + b[15] + b[17]) // 3) % 6 + 1
 
         total = dice1 + dice2 + dice3
         result = 'Tài' if total >= 11 else 'Xỉu'
 
+        trust = 'Trung bình'
         if total in [10, 11]:
             trust = 'Cao'
-        elif 9 <= total <= 12:
-            trust = 'Trung bình'
-        else:
+        elif total <= 8 or total >= 13:
             trust = 'Thấp'
 
         return {
