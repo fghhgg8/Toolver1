@@ -1,4 +1,4 @@
-import discord from discord.ext import commands from datetime import datetime, timedelta import json, os, hashlib from fastapi import FastAPI import uvicorn import threading
+import discord from discord.ext import commands, tasks from datetime import datetime, timedelta import json, os, hashlib from fastapi import FastAPI import uvicorn import threading
 
 TOKEN = os.getenv("DISCORD_TOKEN") ADMIN_ID = 1115314183731421274 PREFIX = '.'
 
@@ -14,14 +14,10 @@ def predict_dice_from_md5(md5_hash: str): if len(md5_hash) != 32: return None tr
 
 @bot.command() async def key(ctx, key): user_id = str(ctx.author.id)
 
-if ctx.author.id != ADMIN_ID and user_id in USER_KEYS:
+# Cho phép admin nhập nhiều key
+if user_id in USER_KEYS and ctx.author.id != ADMIN_ID:
     await ctx.send("✅ Bạn đã nhập key và được xác nhận rồi.")
     return
-
-for k, v in USER_KEYS.items():
-    if k != user_id and v['key'] == key:
-        await ctx.send("❌ Key đã được sử dụng. Nếu share key sẽ bị ban và không hoàn phí 😡😡🤬")
-        return
 
 now = datetime.utcnow()
 for k, v in USER_KEYS.items():
@@ -39,9 +35,7 @@ await ctx.send(f"❌ Key không tồn tại vui lòng liên hệ admin để đ�
 
 @bot.command() async def delkey(ctx): user_id = str(ctx.author.id) if user_id in USER_KEYS: del USER_KEYS[user_id] save_keys() await ctx.send("✅ Key của bạn đã được xóa. Bạn cần nhập lại key để sử dụng tiếp.") else: await ctx.send("⚠️ Bạn chưa nhập key nào trước đó.")
 
-@bot.command() async def taokey(ctx, makey: str, songay: int): if ctx.author.id != ADMIN_ID: return expire_date = (datetime.utcnow() + timedelta(days=songay)).strftime('%Y-%m-%d') USER_KEYS[makey] = {'key': makey, 'expire': expire_date} save_keys() await ctx.send(f"✨ Key mới: {makey}\nHết hạn: {expire_date}")
-
-@bot.command() @commands.cooldown(1, 10, commands.BucketType.user) async def dts(ctx, md5): user_id = str(ctx.author.id) if user_id not in USER_KEYS and ctx.author.id != ADMIN_ID: await ctx.send(f"❌ Bạn chưa nhập key. Dùng lệnh .key <key> trước. Liên hệ admin <@{ADMIN_ID}>") return
+@bot.command() @commands.cooldown(1, 10, commands.BucketType.user) async def dts(ctx, md5): user_id = str(ctx.author.id) if user_id not in USER_KEYS: await ctx.send(f"❌ Bạn chưa nhập key. Dùng lệnh .key <key> trước. Liên hệ admin <@{ADMIN_ID}>") return
 
 result = predict_dice_from_md5(md5)
 if not result:
@@ -57,11 +51,7 @@ msg = (
 )
 await ctx.send(msg)
 
-Auto xóa key hết hạn mỗi giờ
-
-@tasks.loop(minutes=60) async def auto_remove_expired_keys(): now = datetime.utcnow() expired_users = [uid for uid, data in USER_KEYS.items() if datetime.strptime(data['expire'], '%Y-%m-%d') < now] for uid in expired_users: del USER_KEYS[uid] if expired_users: save_keys()
-
-auto_remove_expired_keys.start()
+@bot.command() async def taokey(ctx, ten: str, songay: int): if ctx.author.id != ADMIN_ID: return key = ten expire_date = (datetime.utcnow() + timedelta(days=songay)).strftime('%Y-%m-%d') USER_KEYS[key] = {'key': key, 'expire': expire_date} save_keys() await ctx.send(f"✨ Key mới: {key}\nHết hạn: {expire_date}")
 
 FastAPI server cho UptimeRobot
 
