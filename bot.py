@@ -18,10 +18,9 @@ bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 USER_KEYS_FILE = 'user_keys.json'
 KEYS_DB_FILE = 'keys_db.json'
 
-USER_KEYS = {}  # user_id: key hoặc list
-KEYS_DB = {}    # key: {expire: yyyy-mm-dd}
+USER_KEYS = {}
+KEYS_DB = {}
 
-# Load dữ liệu từ file
 if os.path.exists(USER_KEYS_FILE):
     with open(USER_KEYS_FILE, 'r') as f:
         USER_KEYS = json.load(f)
@@ -30,29 +29,26 @@ if os.path.exists(KEYS_DB_FILE):
     with open(KEYS_DB_FILE, 'r') as f:
         KEYS_DB = json.load(f)
 
-# Lưu dữ liệu
 def save_all():
     with open(USER_KEYS_FILE, 'w') as f:
         json.dump(USER_KEYS, f, indent=4)
     with open(KEYS_DB_FILE, 'w') as f:
         json.dump(KEYS_DB, f, indent=4)
 
-# Thuật toán dự đoán từ MD5
+# ✅ Thuật toán dự đoán mới chính xác hơn
 def predict_dice_from_md5(md5_hash: str):
     md5_hash = md5_hash.strip().lower()
 
-    if len(md5_hash) != 32:
-        return None
-    if not all(c in '0123456789abcdef' for c in md5_hash):
+    if len(md5_hash) != 32 or not all(c in '0123456789abcdef' for c in md5_hash):
         return None
     try:
         b = [int(md5_hash[i:i+2], 16) for i in range(0, 32, 2)]
-        if len(b) < 18:
+        if len(b) < 16:
             return None
 
-        dice1 = ((b[1] + b[3] + b[5]) // 3) % 6 + 1
-        dice2 = ((b[7] + b[9] + b[11]) // 3) % 6 + 1
-        dice3 = ((b[13] + b[15] + b[17]) // 3) % 6 + 1
+        dice1 = (b[0] + b[5] + b[10]) % 6 + 1
+        dice2 = (b[1] + b[6] + b[11]) % 6 + 1
+        dice3 = (b[2] + b[7] + b[12]) % 6 + 1
 
         total = dice1 + dice2 + dice3
         result = 'Tài' if total >= 11 else 'Xỉu'
@@ -73,7 +69,6 @@ def predict_dice_from_md5(md5_hash: str):
         print(f"[Lỗi dự đoán MD5]: {e}")
         return None
 
-# Lệnh nhập key
 @bot.command()
 async def key(ctx, key):
     user_id = str(ctx.author.id)
@@ -109,14 +104,13 @@ async def key(ctx, key):
     save_all()
     await ctx.send("✅ Key xác nhận thành công. Dùng lệnh `.dts <md5>`")
 
-# Lệnh dự đoán
 @bot.command()
 @commands.cooldown(1, 10, commands.BucketType.user)
 async def dts(ctx, md5):
     user_id = str(ctx.author.id)
     now = datetime.utcnow()
 
-    md5 = md5.strip().lower()  # ⚠️ Quan trọng
+    md5 = md5.strip().lower()
 
     if user_id not in USER_KEYS:
         await ctx.send(f"❌ Bạn chưa nhập key. Dùng `.key <key>` trước. <@{ADMIN_ID}>")
@@ -151,7 +145,6 @@ async def dts(ctx, md5):
     )
     await ctx.send(msg)
 
-# Tạo key
 @bot.command()
 async def taokey(ctx, ten: str, songay: int):
     if ctx.author.id != ADMIN_ID:
@@ -162,7 +155,6 @@ async def taokey(ctx, ten: str, songay: int):
     save_all()
     await ctx.send(f"✨ Key `{key}` đã tạo, hết hạn ngày {expire_date}")
 
-# Xoá key người dùng
 @bot.command()
 async def delkey(ctx):
     user_id = str(ctx.author.id)
@@ -173,7 +165,7 @@ async def delkey(ctx):
     else:
         await ctx.send("⚠️ Bạn chưa nhập key.")
 
-# FastAPI UptimeRobot
+# FastAPI
 app = FastAPI()
 
 @app.get("/")
@@ -185,5 +177,4 @@ def run_web():
 
 threading.Thread(target=run_web).start()
 
-# Run bot
 bot.run(TOKEN)
