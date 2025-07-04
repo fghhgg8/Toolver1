@@ -35,7 +35,7 @@ def save_all():
     with open(KEYS_DB_FILE, 'w') as f:
         json.dump(KEYS_DB, f, indent=4)
 
-# ✅ Thuật toán dự đoán mới chính xác hơn
+# ✅ Thuật toán mới chính xác hơn
 def predict_dice_from_md5(md5_hash: str):
     md5_hash = md5_hash.strip().lower()
 
@@ -46,9 +46,10 @@ def predict_dice_from_md5(md5_hash: str):
         if len(b) < 16:
             return None
 
-        dice1 = (b[0] + b[5] + b[10]) % 6 + 1
-        dice2 = (b[1] + b[6] + b[11]) % 6 + 1
-        dice3 = (b[2] + b[7] + b[12]) % 6 + 1
+        # Sử dụng byte 13–15 (vị trí 12–14) để dự đoán
+        dice1 = b[12] % 6 + 1
+        dice2 = b[13] % 6 + 1
+        dice3 = b[14] % 6 + 1
 
         total = dice1 + dice2 + dice3
         result = 'Tài' if total >= 11 else 'Xỉu'
