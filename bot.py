@@ -104,6 +104,7 @@ async def key(ctx, key):
     save_all()
     await ctx.send("✅ Key xác nhận thành công. Dùng lệnh `.dts <md5>`")
 
+# ✅ Lệnh .dts để sử dụng tool
 @bot.command()
 @commands.cooldown(1, 10, commands.BucketType.user)
 async def dts(ctx, md5):
@@ -165,7 +166,7 @@ async def delkey(ctx):
     else:
         await ctx.send("⚠️ Bạn chưa nhập key.")
 
-# FastAPI server
+# FastAPI server để giữ bot online
 app = FastAPI()
 
 @app.get("/")
