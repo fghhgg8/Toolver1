@@ -13,7 +13,7 @@ PREFIX = '.'
 
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix=PREFIX, intents=intents)
+bot = commands.Bot(command_prefix=PREFIX, intents=intents, help_command=None)
 
 USER_KEYS_FILE = 'user_keys.json'
 KEYS_DB_FILE = 'keys_db.json'
@@ -43,7 +43,6 @@ def save_all():
     with open(MD5_LOG_FILE, 'w') as f:
         json.dump(MD5_LOG, f, indent=4)
 
-# Dự đoán thuật toán cũ
 def predict_dice_from_md5(md5_hash: str):
     try:
         md5_hash = md5_hash.strip().lower()
@@ -61,7 +60,6 @@ def predict_dice_from_md5(md5_hash: str):
     except:
         return None
 
-# Thuật toán nâng cấp
 def predict_dice_v1(md5_hash: str):
     try:
         md5_hash = md5_hash.strip().lower()
@@ -139,19 +137,19 @@ async def run_dts_command(ctx, md5, predict_func, version='dts'):
     await ctx.send(msg)
 
 @bot.command()
-async def key(ctx, key):
-    await handle_key_input(ctx, key, 'dts')
+async def key(ctx, key): await handle_key_input(ctx, key, 'dts')
 
 @bot.command()
-async def keyv1(ctx, key):
-    await handle_key_input(ctx, key, 'dtsv1')
+async def keyv1(ctx, key): await handle_key_input(ctx, key, 'dtsv1')
 
 async def handle_key_input(ctx, key, version):
     user_id = str(ctx.author.id)
     now = datetime.utcnow()
+
     if key not in KEYS_DB or KEYS_DB[key].get("type") != version:
         await ctx.send(f"❌ Key không tồn tại hoặc sai loại. Liên hệ admin <@{ADMIN_ID}>")
         return
+
     expire = datetime.strptime(KEYS_DB[key]['expire'], '%Y-%m-%d')
     if now > expire:
         await ctx.send(f"❌ Key đã hết hạn. Liên hệ admin <@{ADMIN_ID}>")
