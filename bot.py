@@ -13,7 +13,8 @@ PREFIX = '.'
 
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix=PREFIX, intents=intents, help_command=None)
+intents.members = True
+bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
 USER_KEYS_FILE = 'user_keys.json'
 KEYS_DB_FILE = 'keys_db.json'
@@ -77,127 +78,26 @@ def predict_dice_v1(md5_hash: str):
     except:
         return None
 
-@bot.command()
-@commands.cooldown(1, 10, commands.BucketType.user)
-async def dts(ctx, md5):
-    await run_dts_command(ctx, md5, predict_dice_from_md5, version='dts')
-
-@bot.command()
-@commands.cooldown(1, 10, commands.BucketType.user)
-async def dtsv1(ctx, md5):
-    await run_dts_command(ctx, md5, predict_dice_v1, version='dtsv1')
-
-async def run_dts_command(ctx, md5, predict_func, version='dts'):
-    user_id = str(ctx.author.id)
-    now = datetime.utcnow()
-    md5 = md5.strip().lower()
-
-    if user_id not in USER_KEYS or version not in USER_KEYS[user_id]:
-        await ctx.send(f"❌ Bạn chưa nhập key cho `{version}`. Dùng `.{ 'key' if version=='dts' else 'keyv1' } <key>` trước. <@{ADMIN_ID}>")
+@bot.event
+async def on_message(message):
+    if message.author.bot:
         return
-
-    keys = USER_KEYS[user_id][version]
-    if not isinstance(keys, list):
-        keys = [keys]
-    valid = False
-    for k in keys:
-        if k in KEYS_DB:
-            expire = datetime.strptime(KEYS_DB[k]['expire'], '%Y-%m-%d')
-            if now <= expire:
-                valid = True
-                break
-
-    if not valid:
-        del USER_KEYS[user_id][version]
-        save_all()
-        await ctx.send(f"❌ Key `{version}` đã hết hạn. Liên hệ admin <@{ADMIN_ID}>")
-        return
-
-    result = predict_func(md5)
-    if not result:
-        await ctx.send("❌ MD5 không hợp lệ. Vui lòng nhập đúng chuỗi 32 ký tự hex (0-9a-f).")
-        return
-
-    MD5_LOG.append({
-        "user": user_id,
-        "md5": md5,
-        "bot_result": result['xúc_xắc'],
-        "real_result": None,
-        "version": version
-    })
-    save_all()
-
-    msg = (
-        f"🎲 [{version.upper()}] Kết quả dự đoán:\n"
-        f"• Xúc xắc: {result['xúc_xắc']}\n"
-        f"• Tổng: {result['tổng']} ({result['kết_quả']})\n"
-        f"• Độ tin cậy: {result['độ_tin_cậy']}\n\n"
-        f"✨ DTS TOOL VIP – MUỐN MUA KEY LIÊN HỆ ADMIN <@{ADMIN_ID}>"
-    )
-    await ctx.send(msg)
-
-@bot.command()
-async def key(ctx, key): await handle_key_input(ctx, key, 'dts')
-
-@bot.command()
-async def keyv1(ctx, key): await handle_key_input(ctx, key, 'dtsv1')
-
-async def handle_key_input(ctx, key, version):
-    user_id = str(ctx.author.id)
-    now = datetime.utcnow()
-
-    if key not in KEYS_DB or KEYS_DB[key].get("type") != version:
-        await ctx.send(f"❌ Key không tồn tại hoặc sai loại. Liên hệ admin <@{ADMIN_ID}>")
-        return
-
-    expire = datetime.strptime(KEYS_DB[key]['expire'], '%Y-%m-%d')
-    if now > expire:
-        await ctx.send(f"❌ Key đã hết hạn. Liên hệ admin <@{ADMIN_ID}>")
-        return
-
-    USER_KEYS.setdefault(user_id, {})
-
-    if ctx.author.id == ADMIN_ID:
-        USER_KEYS[user_id].setdefault(version, [])
-        if key not in USER_KEYS[user_id][version]:
-            USER_KEYS[user_id][version].append(key)
-        save_all()
-        await ctx.send(f"✅ Admin nhập key `{version}` thành công.")
-        return
-
-    if version in USER_KEYS[user_id]:
-        await ctx.send(f"✅ Bạn đã nhập key `{version}` rồi.")
-        return
-
-    for uid, keydata in USER_KEYS.items():
-        if isinstance(keydata.get(version), str) and keydata[version] == key:
-            await ctx.send(f"❌ Key đã được người khác sử dụng. Liên hệ admin <@{ADMIN_ID}>")
-            return
-
-    USER_KEYS[user_id][version] = key
-    save_all()
-    await ctx.send(f"✅ Key xác nhận thành công cho `{version}`.")
-
-@bot.command()
-async def taokeydts(ctx, key: str, songay: int):
-    if ctx.author.id != ADMIN_ID: return
-    expire_date = (datetime.utcnow() + timedelta(days=songay)).strftime('%Y-%m-%d')
-    KEYS_DB[key] = {'key': key, 'expire': expire_date, 'type': 'dts'}
-    save_all()
-    await ctx.send(f"✅ Đã tạo key `{key}` cho `.dts`, hết hạn ngày {expire_date}")
-
-@bot.command()
-async def taokeydtsv1(ctx, key: str, songay: int):
-    if ctx.author.id != ADMIN_ID: return
-    expire_date = (datetime.utcnow() + timedelta(days=songay)).strftime('%Y-%m-%d')
-    KEYS_DB[key] = {'key': key, 'expire': expire_date, 'type': 'dtsv1'}
-    save_all()
-    await ctx.send(f"✅ Đã tạo key `{key}` cho `.dtsv1`, hết hạn ngày {expire_date}")
+    if bot.user in message.mentions and message.author.id == ADMIN_ID:
+        warning = (
+            "⚠️ **BOT VẪN LÀ BOT KHÔNG THỂ CHÍNH XÁC 100%**. NẾU ĐÚNG 100% AD ĐÃ GIÀU\n"
+            "**KHÔNG NÊN ALLIN, ALLIN = CÚT, TRÁNH CẦU BỆT**\n"
+            "**NHẮC LẠI BOT VẪN LÀ BOT KHÔNG THỂ CHÍNH XÁC 100%, ĐÔI LÚC CHỈ ĐÚNG 60%-70%**\n"
+            "💡 **LƯU Ý: CỜ BẠC CHÁN CHÁN THÌ CHƠI VUI VUI, KHÔNG NÊN HAM. HAM QUÁ MẤT NHÀ!**\n"
+            "❌ **CỜ BẠC LÀ HÀNH VI VI PHẠM PHÁP LUẬT. KHÔNG CỔ SÚY CHƠI!**"
+        )
+        await message.channel.send(warning)
+    await bot.process_commands(message)
 
 @bot.command()
 async def danhsach(ctx):
-    user_id = str(ctx.author.id)
-    entries = [log for log in MD5_LOG if log['user'] == user_id and log['version'] == 'dts' and log['real_result']]
+    if ctx.author.id != ADMIN_ID:
+        return
+    entries = [log for log in MD5_LOG if log['user'] == str(ctx.author.id) and log['version'] == 'dts' and log['real_result']]
     if not entries:
         await ctx.send("📭 Bạn chưa có kết quả thật nào.")
         return
@@ -208,8 +108,9 @@ async def danhsach(ctx):
 
 @bot.command()
 async def danhsachv1(ctx):
-    user_id = str(ctx.author.id)
-    entries = [log for log in MD5_LOG if log['user'] == user_id and log['version'] == 'dtsv1' and log['real_result']]
+    if ctx.author.id != ADMIN_ID:
+        return
+    entries = [log for log in MD5_LOG if log['user'] == str(ctx.author.id) and log['version'] == 'dtsv1' and log['real_result']]
     if not entries:
         await ctx.send("📭 Bạn chưa có kết quả thật nào.")
         return
@@ -219,44 +120,48 @@ async def danhsachv1(ctx):
     await ctx.send(msg)
 
 @bot.command()
-async def help(ctx):
+async def lenh(ctx):
+    if ctx.author.id != ADMIN_ID:
+        return
     help_text = (
-        "**📘 DANH SÁCH LỆNH HỖ TRỢ:**\n\n"
+        "📘 **DANH SÁCH LỆNH HỖ TRỢ:**\n\n"
         "🔑 **Quản lý Key:**\n"
-        "• `.key <key>` — Nhập key dùng cho lệnh `.dts`\n"
-        "• `.keyv1 <key>` — Nhập key dùng cho lệnh `.dtsv1`\n"
-        "• `.taokeydts <key> <số ngày>` — (Admin) Tạo key cho `.dts`\n"
-        "• `.taokeydtsv1 <key> <số ngày>` — (Admin) Tạo key cho `.dtsv1`\n\n"
-        "🎲 **Dự đoán từ MD5:**\n"
-        "• `.dts <md5>` — Dự đoán theo thuật toán thường\n"
-        "• `.dtsv1 <md5>` — Dự đoán theo thuật toán nâng cấp chính xác hơn\n\n"
-        "📝 **Xem lại kết quả thật:**\n"
-        "• `.danhsach` — Danh sách kết quả thật từ `.dts`\n"
-        "• `.danhsachv1` — Danh sách kết quả thật từ `.dtsv1`\n\n"
-        "📬 **Ghi chú:**\n"
-        "- Trả lời bot bằng tin nhắn chứa kết quả thật như `123`, `2 4 6`, `thật: 1 1 5` để lưu lại.\n"
-        f"- Admin ID: <@{ADMIN_ID}>\n"
-        "✨ DTS TOOL VIP – MUỐN MUA KEY LIÊN HỆ ADMIN"
+        "• `.key <key>` — Nhập key cho `.dts`\n"
+        "• `.keyv1 <key>` — Nhập key cho `.dtsv1`\n"
+        "• `.taokeydts <key> <số ngày>` — (Admin) Tạo key `.dts`\n"
+        "• `.taokeydtsv1 <key> <số ngày>` — (Admin) Tạo key `.dtsv1`\n\n"
+        "🎲 **Dự đoán:**\n"
+        "• `.dts <md5>` — Dự đoán MD5 (thường)\n"
+        "• `.dtsv1 <md5>` — Dự đoán MD5 (nâng cấp)\n\n"
+        "📋 **Xem kết quả:**\n"
+        "• `.danhsach` — Kết quả thật `.dts`\n"
+        "• `.danhsachv1` — Kết quả thật `.dtsv1`\n\n"
+        "🎨 **Quản lý màu:**\n"
+        "• `.mau <user_id> <hex_color>` — Đổi màu tên user (Admin)"
     )
     await ctx.send(help_text)
 
-@bot.event
-async def on_message(message):
-    await bot.process_commands(message)
-    if message.author.bot:
+@bot.command()
+async def mau(ctx, user_id: int, color_hex: str):
+    if ctx.author.id != ADMIN_ID:
         return
-    user_id = str(message.author.id)
-    content = message.content.strip().lower()
-    match = re.search(r'(?:thật:|kq|kết quả)?\s*([1-6])\D+([1-6])\D+([1-6])', content)
-    if not match:
+    guild = ctx.guild
+    member = guild.get_member(user_id)
+    if not member:
+        await ctx.send("❌ Không tìm thấy user trong server.")
         return
-    real = [int(match.group(1)), int(match.group(2)), int(match.group(3))]
-    for entry in reversed(MD5_LOG):
-        if entry['user'] == user_id and entry['real_result'] is None:
-            entry['real_result'] = real
-            save_all()
-            await message.channel.send("✅ Đã ghi nhận kết quả thật.")
-            break
+    try:
+        color_value = int(color_hex.lstrip("#"), 16)
+        role_name = f"color_{user_id}"
+        role = discord.utils.get(guild.roles, name=role_name)
+        if not role:
+            role = await guild.create_role(name=role_name, color=discord.Color(color_value))
+        else:
+            await role.edit(color=discord.Color(color_value))
+        await member.add_roles(role)
+        await ctx.send(f"✅ Đã đổi màu tên cho <@{user_id}>.")
+    except Exception as e:
+        await ctx.send(f"❌ Lỗi: {str(e)}")
 
 # FastAPI giữ bot online
 app = FastAPI()
