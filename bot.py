@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 from datetime import datetime, timedelta
-import json, os
+import json, os, re
 from fastapi import FastAPI
 import uvicorn
 import threading
@@ -43,12 +43,12 @@ def save_all():
     with open(MD5_LOG_FILE, 'w') as f:
         json.dump(MD5_LOG, f, indent=4)
 
-# Thuật toán mặc định
+# Dự đoán thuật toán cũ
 def predict_dice_from_md5(md5_hash: str):
-    md5_hash = md5_hash.strip().lower()
-    if len(md5_hash) != 32 or not all(c in '0123456789abcdef' for c in md5_hash):
-        return None
     try:
+        md5_hash = md5_hash.strip().lower()
+        if len(md5_hash) != 32 or not all(c in '0123456789abcdef' for c in md5_hash):
+            return None
         b = [int(md5_hash[i:i+2], 16) for i in range(0, 32, 2)]
         dice1 = (b[0] + b[3] + b[14]) % 6 + 1
         dice2 = (b[1] + b[5] + b[12]) % 6 + 1
@@ -101,7 +101,6 @@ async def run_dts_command(ctx, md5, predict_func, version='dts'):
     keys = USER_KEYS[user_id][version]
     if not isinstance(keys, list):
         keys = [keys]
-
     valid = False
     for k in keys:
         if k in KEYS_DB:
@@ -121,7 +120,13 @@ async def run_dts_command(ctx, md5, predict_func, version='dts'):
         await ctx.send("❌ MD5 không hợp lệ. Vui lòng nhập đúng chuỗi 32 ký tự hex (0-9a-f).")
         return
 
-    MD5_LOG.append({"user": user_id, "md5": md5, "bot_result": result['xúc_xắc'], "real_result": None})
+    MD5_LOG.append({
+        "user": user_id,
+        "md5": md5,
+        "bot_result": result['xúc_xắc'],
+        "real_result": None,
+        "version": version
+    })
     save_all()
 
     msg = (
@@ -144,11 +149,9 @@ async def keyv1(ctx, key):
 async def handle_key_input(ctx, key, version):
     user_id = str(ctx.author.id)
     now = datetime.utcnow()
-
     if key not in KEYS_DB or KEYS_DB[key].get("type") != version:
         await ctx.send(f"❌ Key không tồn tại hoặc sai loại. Liên hệ admin <@{ADMIN_ID}>")
         return
-
     expire = datetime.strptime(KEYS_DB[key]['expire'], '%Y-%m-%d')
     if now > expire:
         await ctx.send(f"❌ Key đã hết hạn. Liên hệ admin <@{ADMIN_ID}>")
@@ -160,7 +163,7 @@ async def handle_key_input(ctx, key, version):
         USER_KEYS[user_id].setdefault(version, [])
         if key not in USER_KEYS[user_id][version]:
             USER_KEYS[user_id][version].append(key)
-            save_all()
+        save_all()
         await ctx.send(f"✅ Admin nhập key `{version}` thành công.")
         return
 
@@ -179,8 +182,7 @@ async def handle_key_input(ctx, key, version):
 
 @bot.command()
 async def taokeydts(ctx, key: str, songay: int):
-    if ctx.author.id != ADMIN_ID:
-        return
+    if ctx.author.id != ADMIN_ID: return
     expire_date = (datetime.utcnow() + timedelta(days=songay)).strftime('%Y-%m-%d')
     KEYS_DB[key] = {'key': key, 'expire': expire_date, 'type': 'dts'}
     save_all()
@@ -188,12 +190,75 @@ async def taokeydts(ctx, key: str, songay: int):
 
 @bot.command()
 async def taokeydtsv1(ctx, key: str, songay: int):
-    if ctx.author.id != ADMIN_ID:
-        return
+    if ctx.author.id != ADMIN_ID: return
     expire_date = (datetime.utcnow() + timedelta(days=songay)).strftime('%Y-%m-%d')
     KEYS_DB[key] = {'key': key, 'expire': expire_date, 'type': 'dtsv1'}
     save_all()
     await ctx.send(f"✅ Đã tạo key `{key}` cho `.dtsv1`, hết hạn ngày {expire_date}")
+
+@bot.command()
+async def danhsach(ctx):
+    user_id = str(ctx.author.id)
+    entries = [log for log in MD5_LOG if log['user'] == user_id and log['version'] == 'dts' and log['real_result']]
+    if not entries:
+        await ctx.send("📭 Bạn chưa có kết quả thật nào.")
+        return
+    msg = "📋 **Danh sách kết quả `.dts` đã lưu:**\n"
+    for e in entries[-10:]:
+        msg += f"• MD5: `{e['md5']}` → Bot: {e['bot_result']} | Thật: {e['real_result']}\n"
+    await ctx.send(msg)
+
+@bot.command()
+async def danhsachv1(ctx):
+    user_id = str(ctx.author.id)
+    entries = [log for log in MD5_LOG if log['user'] == user_id and log['version'] == 'dtsv1' and log['real_result']]
+    if not entries:
+        await ctx.send("📭 Bạn chưa có kết quả thật nào.")
+        return
+    msg = "📋 **Danh sách kết quả `.dtsv1` đã lưu:**\n"
+    for e in entries[-10:]:
+        msg += f"• MD5: `{e['md5']}` → Bot: {e['bot_result']} | Thật: {e['real_result']}\n"
+    await ctx.send(msg)
+
+@bot.command()
+async def help(ctx):
+    help_text = (
+        "**📘 DANH SÁCH LỆNH HỖ TRỢ:**\n\n"
+        "🔑 **Quản lý Key:**\n"
+        "• `.key <key>` — Nhập key dùng cho lệnh `.dts`\n"
+        "• `.keyv1 <key>` — Nhập key dùng cho lệnh `.dtsv1`\n"
+        "• `.taokeydts <key> <số ngày>` — (Admin) Tạo key cho `.dts`\n"
+        "• `.taokeydtsv1 <key> <số ngày>` — (Admin) Tạo key cho `.dtsv1`\n\n"
+        "🎲 **Dự đoán từ MD5:**\n"
+        "• `.dts <md5>` — Dự đoán theo thuật toán thường\n"
+        "• `.dtsv1 <md5>` — Dự đoán theo thuật toán nâng cấp chính xác hơn\n\n"
+        "📝 **Xem lại kết quả thật:**\n"
+        "• `.danhsach` — Danh sách kết quả thật từ `.dts`\n"
+        "• `.danhsachv1` — Danh sách kết quả thật từ `.dtsv1`\n\n"
+        "📬 **Ghi chú:**\n"
+        "- Trả lời bot bằng tin nhắn chứa kết quả thật như `123`, `2 4 6`, `thật: 1 1 5` để lưu lại.\n"
+        f"- Admin ID: <@{ADMIN_ID}>\n"
+        "✨ DTS TOOL VIP – MUỐN MUA KEY LIÊN HỆ ADMIN"
+    )
+    await ctx.send(help_text)
+
+@bot.event
+async def on_message(message):
+    await bot.process_commands(message)
+    if message.author.bot:
+        return
+    user_id = str(message.author.id)
+    content = message.content.strip().lower()
+    match = re.search(r'(?:thật:|kq|kết quả)?\s*([1-6])\D+([1-6])\D+([1-6])', content)
+    if not match:
+        return
+    real = [int(match.group(1)), int(match.group(2)), int(match.group(3))]
+    for entry in reversed(MD5_LOG):
+        if entry['user'] == user_id and entry['real_result'] is None:
+            entry['real_result'] = real
+            save_all()
+            await message.channel.send("✅ Đã ghi nhận kết quả thật.")
+            break
 
 # FastAPI giữ bot online
 app = FastAPI()
